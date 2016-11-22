@@ -1,4 +1,4 @@
-# gradle-simple
+# promise4j
 
 [![Release](https://img.shields.io/github/release/webee/promise4j.svg?label=maven version)](https://jitpack.io/#webee/promise4j)
 
