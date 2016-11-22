@@ -7,6 +7,7 @@ import org.junit.Assert;
 
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 
 /**
@@ -199,6 +200,19 @@ public class PromiseTest {
             System.out.println("Error: " + e.getMessage());
             System.out.println("err: " + System.currentTimeMillis());
         }
+    }
+
+    @Test
+    public void sleep() throws Throwable {
+        Promise<String> p = Promise.resolve("v");
+        p.then(Transforms.delay(3, TimeUnit.SECONDS))
+                .fulfilled(new Action<String>() {
+                    @Override
+                    public void run(String s) {
+                        System.out.println(s);
+                    }
+                })
+        .await();
     }
 
     @Test

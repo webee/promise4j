@@ -6,12 +6,15 @@ import java.util.concurrent.TimeUnit;
  * Created by webee on 16/11/22.
  */
 public class Transforms {
-    public static <T> Transform<T, T> delay(final long time, final TimeUnit unit) {
-        return new Transform<T, T>() {
+    public static Runnable delay(final long time, final TimeUnit unit) {
+        return new Runnable() {
             @Override
-            public T run(T t) throws Throwable {
-                unit.sleep(time);
-                return t;
+            public void run() {
+                try {
+                    unit.sleep(time);
+                } catch (InterruptedException e) {
+                    throw new RuntimeException(e);
+                }
             }
         };
     }

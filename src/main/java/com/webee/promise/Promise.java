@@ -6,10 +6,7 @@ import com.webee.promise.functions.Fulfillment;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.Executor;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 
 /**
  * Created by webee on 16/11/17.
@@ -317,6 +314,30 @@ public class Promise<T> {
      */
     public <V> Promise<V> then(PromiseTransform<T, V> transform) {
         return then((Transform<T, V>)transform);
+    }
+
+    /**
+     * 闭包变换, 值类型不变
+     * @param transform 变换回调
+     * @return 变换后Promise
+     */
+    public Promise<T> then(ClosureTransform<T> transform) {
+        return then((Transform<T, T>)transform);
+    }
+
+    /**
+     * 等值变换
+     * @param action
+     * @return
+     */
+    public Promise<T> then(final Runnable action) {
+        return then(new ClosureTransform<T>() {
+            @Override
+            public T run(T t) throws Throwable {
+                action.run();
+                return t;
+            }
+        });
     }
 
     abstract class Handler implements Runnable {
