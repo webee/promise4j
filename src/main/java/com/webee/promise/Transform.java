@@ -5,5 +5,5 @@ package com.webee.promise;
  */
 
 public interface Transform<T, V> {
-    V run(T v);
+    V run(T t) throws Throwable;
 }

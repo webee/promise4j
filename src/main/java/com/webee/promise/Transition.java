@@ -5,8 +5,8 @@ package com.webee.promise;
  */
 
 public interface Transition<T> {
-    void fulfill(T v);
+    void fulfill(T t);
     void fulfill(Promise<T> p);
-    void reject(Throwable r);
-    void update(Object s);
+    void reject(Throwable t);
+    void update(Object o);
 }

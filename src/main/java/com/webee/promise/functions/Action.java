@@ -5,5 +5,5 @@ package com.webee.promise.functions;
  */
 
 public interface Action<T> {
-    void run(T v);
+    void run(T t);
 }
