@@ -1,6 +1,6 @@
-package com.webee.promise;
+package com.github.webee.promise;
 
-import com.webee.promise.functions.Fulfillment;
+import com.github.webee.promise.functions.Fulfillment;
 
 /**
  * Created by webee on 16/11/19.

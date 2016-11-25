@@ -1,4 +1,4 @@
-package com.webee.promise;
+package com.github.webee.promise;
 
 import java.util.concurrent.TimeUnit;
 

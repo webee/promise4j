@@ -1,6 +1,6 @@
-package com.webee.promise.functions;
+package com.github.webee.promise.functions;
 
-import com.webee.promise.Transition;
+import com.github.webee.promise.Transition;
 
 /**
  * Created by webee on 16/11/18.

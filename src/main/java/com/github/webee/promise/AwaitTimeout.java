@@ -1,4 +1,4 @@
-package com.webee.promise;
+package com.github.webee.promise;
 
 /**
  * Created by webee on 16/11/22.

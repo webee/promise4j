@@ -1,7 +1,7 @@
-package com.webee.promise;
+package com.github.webee.promise;
 
-import com.webee.promise.functions.Action;
-import com.webee.promise.functions.Fulfillment;
+import com.github.webee.promise.functions.Action;
+import com.github.webee.promise.functions.Fulfillment;
 import org.junit.Test;
 import org.junit.Assert;
 
