@@ -18,6 +18,7 @@ public class Promise<T> {
     }
 
     private Executor executor;
+    private Executor transformExecutor;
     private ConcurrentLinkedQueue<ExecutableRunnable> handlers = new ConcurrentLinkedQueue<>();
     private ConcurrentLinkedQueue<ExecutableRunnable> listeners = new ConcurrentLinkedQueue<>();
     private State state = State.PENDING;
@@ -98,10 +99,6 @@ public class Promise<T> {
         }
     }
 
-    private synchronized void handle(Handler handler) {
-        handle(handler, PromiseExecutors.defaultExcutor());
-    }
-
     private synchronized void _reject(Throwable r) {
         if (state == State.PENDING) {
             reason = r;
@@ -155,14 +152,18 @@ public class Promise<T> {
                     latch.countDown();
                 }
             });
+            boolean done = true;
             try {
                 if (withTimeout) {
-                    latch.await(timeout, unit);
+                    done = latch.await(timeout, unit);
                 } else {
                     latch.await();
                 }
             } catch (InterruptedException e) {
                 throw new AwaitTimeout(e);
+            }
+            if (!done) {
+                throw new AwaitTimeout(null);
             }
         }
         if (state == State.FULFILLED) {
@@ -177,6 +178,13 @@ public class Promise<T> {
 
     public T await() throws Throwable {
         return await(false, 0, null);
+    }
+
+    /**
+     * 取消, 目前仅仅是reject为PromiseCanceledException, TODO: 尝试将执行线程取消
+     */
+    public void cancel() {
+        _reject(new PromiseCanceledException());
     }
 
     /**
@@ -276,13 +284,25 @@ public class Promise<T> {
     }
 
     /**
+     * 指定转换执行器
+     *
+     * @param executor 执行器
+     * @return 当前Promise
+     */
+    public Promise<T> transformOn(Executor executor) {
+        this.transformExecutor = executor;
+        return this;
+    }
+
+    /**
      * 进入下一个计算流程
      *
+     * @param executor 执行器
      * @param transform 变换回调
      * @param <V> 变换目标类型
      * @return 变换后Promise
      */
-    public <V> Promise<V> then(final Transform<T, V> transform) {
+    public <V> Promise<V> then(final Executor executor, final Transform<T, V> transform) {
         return new Promise<>(new Fulfillment<V>() {
             @Override
             public void run(final Transition<V> transition) {
@@ -301,43 +321,62 @@ public class Promise<T> {
                     public void onRejected(Throwable r) {
                         transition.reject(r);
                     }
-                });
+                }, executor);
             }
         });
     }
 
+    public <V> Promise<V> then(final Transform<T, V> transform) {
+        return then(transformExecutor, transform);
+    }
+
     /**
      * 使用返回Promise的变换
+     * @param executor 执行器
      * @param transform 变换回调
      * @param <V> 变换目标值类型
      * @return 变换后Promise
      */
+    public <V> Promise<V> then(Executor executor, PromiseTransform<T, V> transform) {
+        return then(executor, (Transform<T, V>)transform);
+    }
+
     public <V> Promise<V> then(PromiseTransform<T, V> transform) {
-        return then((Transform<T, V>)transform);
+        return then(transformExecutor, transform);
     }
 
     /**
      * 闭包变换, 值类型不变
+     * @param executor 执行器
      * @param transform 变换回调
      * @return 变换后Promise
      */
+    public Promise<T> then(Executor executor, ClosureTransform<T> transform) {
+        return then(executor, (Transform<T, T>)transform);
+    }
+
     public Promise<T> then(ClosureTransform<T> transform) {
-        return then((Transform<T, T>)transform);
+        return then(transformExecutor, transform);
     }
 
     /**
      * 等值变换
+     * @param executor 执行器
      * @param action
      * @return
      */
-    public Promise<T> then(final Runnable action) {
-        return then(new ClosureTransform<T>() {
+    public Promise<T> then(Executor executor, final Runnable action) {
+        return then(executor, new ClosureTransform<T>() {
             @Override
             public T run(T t) throws Throwable {
                 action.run();
                 return t;
             }
         });
+    }
+
+    public Promise<T> then(final Runnable action) {
+        return then(transformExecutor, action);
     }
 
     abstract class Handler implements Runnable {

@@ -216,6 +216,42 @@ public class PromiseTest {
     }
 
     @Test
+    public void cancel() throws InterruptedException {
+        final CountDownLatch latch = new CountDownLatch(1);
+        Promise<String> p = Promise.resolve("v");
+        Promise<String> p1;
+            p1 = p.then(Transforms.delay(3, TimeUnit.SECONDS))
+                    .fulfilled(new Action<String>() {
+                        @Override
+                        public void run(String s) {
+                            System.out.println(s);
+                            latch.countDown();
+                        }
+                    })
+                    .rejected(new Action<Throwable>() {
+                        @Override
+                        public void run(Throwable throwable) {
+                            try {
+                                Thread.sleep(2000);
+                            } catch (InterruptedException e) {
+                                e.printStackTrace();
+                            }
+                            System.out.println("rejected: " + throwable.getMessage());
+                            latch.countDown();
+                        }
+                    });
+        try {
+            p1.await(1, TimeUnit.SECONDS);
+        } catch (AwaitTimeout e) {
+            p1.cancel();
+        } catch (PromiseCanceledException e) {
+        } catch (Throwable throwable) {
+            throwable.printStackTrace();
+        }
+        latch.await();
+    }
+
+    @Test
     public void z() throws Throwable {
         int r = Promise.resolve(1)
                 .then(new Transform<Integer, Integer>() {

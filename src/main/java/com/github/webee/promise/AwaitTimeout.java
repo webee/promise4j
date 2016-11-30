@@ -6,6 +6,6 @@ package com.github.webee.promise;
 
 public class AwaitTimeout extends RuntimeException {
     public AwaitTimeout(Throwable cause) {
-        super(cause);
+        super("await timeout", cause);
     }
 }
