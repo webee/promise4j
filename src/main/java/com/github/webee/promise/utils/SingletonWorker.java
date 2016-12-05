@@ -7,6 +7,10 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
+ * A singleton worker is a worker that can be triggered by call .start() at
+ * any time, if it's not running, it will run, else it's pending to run.
+ * for example, it can be use to sync data and ui: data update notify the ui
+ * to update async, we can make load data as a singleton worker.
  * Created by webee on 16/12/5.
  */
 public class SingletonWorker {
