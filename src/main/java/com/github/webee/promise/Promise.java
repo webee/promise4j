@@ -182,9 +182,12 @@ public class Promise<T> {
 
     /**
      * 取消, 目前仅仅是reject为PromiseCanceledException, TODO: 尝试将执行线程取消
+     * @return 是否真的取消了
      */
-    public void cancel() {
-        _reject(new PromiseCanceledException());
+    public boolean cancel() {
+        Throwable r = new PromiseCanceledException();
+        _reject(r);
+        return r == reason;
     }
 
     /**

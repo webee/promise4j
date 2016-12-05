@@ -243,7 +243,8 @@ public class PromiseTest {
         try {
             p1.await(1, TimeUnit.SECONDS);
         } catch (AwaitTimeout e) {
-            p1.cancel();
+            boolean c = p1.cancel();
+            System.out.println("canceled: " + c);
         } catch (PromiseCanceledException e) {
         } catch (Throwable throwable) {
             throwable.printStackTrace();
