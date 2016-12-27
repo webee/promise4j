@@ -2,8 +2,8 @@ package com.github.webee.promise;
 
 import com.github.webee.promise.functions.Action;
 import com.github.webee.promise.functions.Fulfillment;
-import org.junit.Test;
 import org.junit.Assert;
+import org.junit.Test;
 
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
@@ -311,5 +311,39 @@ public class PromiseTest {
                     }
                 }).await();
         Assert.assertEquals(r, 8);
+    }
+
+    @Test
+    public void testReFulfill() throws Throwable {
+        final Promise<Integer> p0 = new Promise<Integer>(new Fulfillment<Integer>() {
+            @Override
+            public void run(final Transition<Integer> transition) {
+                System.out.println("p0");
+                Executors.newSingleThreadExecutor().execute(new Runnable() {
+                    @Override
+                    public void run() {
+                        try {
+                            Thread.sleep(3000);
+                        } catch (InterruptedException e) {
+                            e.printStackTrace();
+                        }
+                        System.out.println("p0 start fulfill");
+                        transition.fulfill(123);
+                    }
+                });
+            }
+        });
+
+        final Promise<Integer> p1 = Promise.resolve(456);
+
+        Promise<Integer> p = new Promise<Integer>(new Fulfillment<Integer>() {
+            @Override
+            public void run(Transition<Integer> transition) {
+                transition.fulfill(p0);
+                transition.fulfill(p1);
+            }
+        });
+
+        System.out.println(p.await());
     }
 }

@@ -16,10 +16,8 @@ import java.util.concurrent.TimeUnit;
  */
 
 public class Promise<T> {
-    // TODO: 是否增加一个WAITING状态, 只允许调用一次fulfill或者reject
-    // 当fulfill Promise时,转为WAITING状态
     enum State {
-        PENDING, WAITING, FULFILLED, REJECTED
+        PENDING, FULFILLED, REJECTED
     }
 
     private Executor executor;
@@ -27,6 +25,7 @@ public class Promise<T> {
     private ConcurrentLinkedQueue<ExecutableRunnable> handlers = new ConcurrentLinkedQueue<>();
     private ConcurrentLinkedQueue<ExecutableRunnable> listeners = new ConcurrentLinkedQueue<>();
     private State state = State.PENDING;
+    private boolean isWaiting = false;
     private T value;
     private Object status;
     private Throwable reason;
@@ -113,6 +112,18 @@ public class Promise<T> {
         }
     }
 
+    /**
+     * waiting状态的reject
+     */
+    private synchronized void _waiting_reject(Throwable r) {
+        if (state == State.PENDING && isWaiting) {
+            reason = r;
+            state = State.REJECTED;
+            isWaiting = false;
+            settled();
+        }
+    }
+
     private synchronized void update(Object s) {
         if (state == State.PENDING) {
             status = s;
@@ -128,20 +139,35 @@ public class Promise<T> {
         }
     }
 
+    /**
+     * waiting状态的fulfill
+     */
+    private synchronized void waiting_fulfill(T v) {
+        if (state == State.PENDING && isWaiting) {
+            value = v;
+            state = State.FULFILLED;
+            isWaiting = false;
+            settled();
+        }
+    }
+
     private synchronized void fulfill(Promise<T> p) {
-        if (state == State.PENDING) {
+        if (state == State.PENDING && !isWaiting) {
+            final Promise<T> hp = this;
+            // 进入等待状态, 防止其它的fulfill或者_reject
+            isWaiting = true;
             try {
                 p.fulfilled(new Action<T>() {
                     public void run(T v) {
-                        Promise.this.fulfill(v);
+                        hp.waiting_fulfill(v);
                     }
                 }).rejected(new Action<Throwable>() {
                     public void run(Throwable v) {
-                        Promise.this._reject(v);
+                        hp._waiting_reject(v);
                     }
                 });
             } catch (Throwable r) {
-                _reject(r);
+                _waiting_reject(r);
             }
         }
     }
