@@ -76,6 +76,21 @@ public class PromiseTest {
     }
 
     @Test
+    public void testCatch() throws Throwable {
+        Promise<Integer> p0 = Promise.reject(new Exception("xxx"));
+        Promise<Integer> p1 = p0.thenCatch(new CatchTransform<Integer>() {
+            @Override
+            public Integer run(Throwable throwable) throws Throwable {
+                if (throwable.getMessage().equals("xxx")) {
+                    return 123;
+                }
+                throw throwable;
+            }
+        });
+        System.out.println("p1: " + p1.await());
+    }
+
+    @Test
     public void deferred() throws Exception {
         final CountDownLatch latch = new CountDownLatch(1);
         final Deferred<String> deferred = new Deferred<>("init");
@@ -250,6 +265,17 @@ public class PromiseTest {
             throwable.printStackTrace();
         }
         latch.await();
+    }
+
+    @Test
+    public void testPromiseTransform() {
+        Promise<Integer> p0 = Promise.reject(new Exception("xxx"));
+        Promise<Integer> p1 = Promise.resolve(p0);
+        try {
+            p1.await();
+        } catch (Throwable throwable) {
+            throwable.printStackTrace();
+        }
     }
 
     @Test

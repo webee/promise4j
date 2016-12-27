@@ -137,11 +137,11 @@ public class Promise<T> {
                     }
                 }).rejected(new Action<Throwable>() {
                     public void run(Throwable v) {
-                        Promise.this.reject(v);
+                        Promise.this._reject(v);
                     }
                 });
             } catch (Throwable r) {
-                reject(r);
+                _reject(r);
             }
         }
     }
