@@ -6,15 +6,20 @@ import com.github.webee.promise.functions.Fulfillment;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.concurrent.*;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executor;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Created by webee on 16/11/17.
  */
 
 public class Promise<T> {
+    // TODO: 是否增加一个WAITING状态, 只允许调用一次fulfill或者reject
+    // 当fulfill Promise时,转为WAITING状态
     enum State {
-        PENDING, FULFILLED, REJECTED
+        PENDING, WAITING, FULFILLED, REJECTED
     }
 
     private Executor executor;
@@ -28,7 +33,8 @@ public class Promise<T> {
 
     /**
      * 通过实现构造一个Promise
-     * @param s 初始状态
+     *
+     * @param s       初始状态
      * @param fulfill 实现
      */
     public Promise(Object s, Fulfillment<T> fulfill) {
@@ -122,19 +128,21 @@ public class Promise<T> {
         }
     }
 
-    private void fulfill(Promise<T> p) {
-        try {
-            p.fulfilled(new Action<T>() {
-                public void run(T v) {
-                    Promise.this.fulfill(v);
-                }
-            }).rejected(new Action<Throwable>() {
-                public void run(Throwable v) {
-                    Promise.this.reject(v);
-                }
-            });
-        } catch (Throwable r) {
-            reject(r);
+    private synchronized void fulfill(Promise<T> p) {
+        if (state == State.PENDING) {
+            try {
+                p.fulfilled(new Action<T>() {
+                    public void run(T v) {
+                        Promise.this.fulfill(v);
+                    }
+                }).rejected(new Action<Throwable>() {
+                    public void run(Throwable v) {
+                        Promise.this.reject(v);
+                    }
+                });
+            } catch (Throwable r) {
+                reject(r);
+            }
         }
     }
 
@@ -182,6 +190,7 @@ public class Promise<T> {
 
     /**
      * 取消, 目前仅仅是reject为PromiseCanceledException, TODO: 尝试将执行线程取消
+     *
      * @return 是否真的取消了
      */
     public boolean cancel() {
@@ -206,7 +215,7 @@ public class Promise<T> {
      *
      * @param executor 执行器
      * @param onUpdate 状态更新回调
-     * @param <V> 状态值类型
+     * @param <V>      状态值类型
      * @return 当前Promise
      */
     public <V> Promise<T> status(Executor executor, final Action<V> onUpdate) {
@@ -225,7 +234,7 @@ public class Promise<T> {
     /**
      * 处理计算成功
      *
-     * @param executor 执行器
+     * @param executor    执行器
      * @param onFulfilled 成功回调
      * @return 当前Promise
      */
@@ -247,7 +256,7 @@ public class Promise<T> {
     /**
      * 处理计算失败
      *
-     * @param executor 执行器
+     * @param executor   执行器
      * @param onRejected 失败回调
      * @return 当前Promise
      */
@@ -268,7 +277,7 @@ public class Promise<T> {
     /**
      * 处理计算结束
      *
-     * @param executor 执行器
+     * @param executor  执行器
      * @param onSettled 结束回调
      * @return 当前Promise
      */
@@ -298,11 +307,54 @@ public class Promise<T> {
     }
 
     /**
+     * 上一个计算流程的异常处理, 使之成为一个可以进一步处理的Promise
+     *
+     * @param executor       执行器
+     * @param catchTransform 异常变换回调
+     * @return 变换后Promise
+     */
+    public Promise<T> thenCatch(final Executor executor, final CatchTransform<T> catchTransform) {
+        return new Promise<>(new Fulfillment<T>() {
+            @Override
+            public void run(final Transition<T> transition) {
+                handle(new Handler() {
+                    @Override
+                    public void onFulfilled(T v) {
+                        doFulfill(transition, v);
+                    }
+
+                    @Override
+                    public void onRejected(Throwable r) {
+                        try {
+                            T v = catchTransform.run(r);
+                            doFulfill(transition, v);
+                        } catch (Throwable e) {
+                            transition.reject(e);
+                        }
+                    }
+                }, executor);
+            }
+        });
+    }
+
+    public Promise<T> thenCatch(final CatchTransform<T> catchTransform) {
+        return thenCatch(transformExecutor, catchTransform);
+    }
+
+    public Promise<T> thenCatch(Executor executor, CatchPromiseTransform<T> catchTransform) {
+        return thenCatch(executor, (CatchTransform<T>) catchTransform);
+    }
+
+    public Promise<T> thenCatch(CatchPromiseTransform<T> catchTransform) {
+        return thenCatch(transformExecutor, catchTransform);
+    }
+
+    /**
      * 进入下一个计算流程
      *
-     * @param executor 执行器
+     * @param executor  执行器
      * @param transform 变换回调
-     * @param <V> 变换目标类型
+     * @param <V>       变换目标类型
      * @return 变换后Promise
      */
     public <V> Promise<V> then(final Executor executor, final Transform<T, V> transform) {
@@ -335,13 +387,14 @@ public class Promise<T> {
 
     /**
      * 使用返回Promise的变换
-     * @param executor 执行器
+     *
+     * @param executor  执行器
      * @param transform 变换回调
-     * @param <V> 变换目标值类型
+     * @param <V>       变换目标值类型
      * @return 变换后Promise
      */
     public <V> Promise<V> then(Executor executor, PromiseTransform<T, V> transform) {
-        return then(executor, (Transform<T, V>)transform);
+        return then(executor, (Transform<T, V>) transform);
     }
 
     public <V> Promise<V> then(PromiseTransform<T, V> transform) {
@@ -350,12 +403,13 @@ public class Promise<T> {
 
     /**
      * 闭包变换, 值类型不变
-     * @param executor 执行器
+     *
+     * @param executor  执行器
      * @param transform 变换回调
      * @return 变换后Promise
      */
     public Promise<T> then(Executor executor, ClosureTransform<T> transform) {
-        return then(executor, (Transform<T, T>)transform);
+        return then(executor, (Transform<T, T>) transform);
     }
 
     public Promise<T> then(ClosureTransform<T> transform) {
@@ -364,6 +418,7 @@ public class Promise<T> {
 
     /**
      * 等值变换
+     *
      * @param executor 执行器
      * @param action
      * @return
@@ -403,7 +458,7 @@ public class Promise<T> {
         }
     }
 
-    class ExecutableRunnable {
+    private class ExecutableRunnable {
         private Executor executor;
         private Runnable runnable;
 
@@ -419,7 +474,7 @@ public class Promise<T> {
 
     private static <T> void doFulfill(Transition<T> transition, T v) {
         if (v instanceof Promise) {
-            transition.fulfill((Promise<T>)v);
+            transition.fulfill((Promise<T>) v);
         } else {
             transition.fulfill(v);
         }
@@ -427,7 +482,8 @@ public class Promise<T> {
 
     /**
      * 生成一个fulfilled值为v的Promise
-     * @param v 值
+     *
+     * @param v   值
      * @param <V> 值类型
      * @return 生成的Promise
      */
@@ -442,17 +498,19 @@ public class Promise<T> {
 
     /**
      * 使用Promise fulfill一个Promise
-     * @param p 源Promise
+     *
+     * @param p   源Promise
      * @param <V> 值类型
      * @return 生成的Promise
      */
     public static <V> Promise<V> resolve(Promise<V> p) {
-        return resolve((V)p);
+        return resolve((V) p);
     }
 
     /**
      * 生成一上rejected reason为r的Promise
-     * @param r reason
+     *
+     * @param r   reason
      * @param <V> 值类型
      * @return 生成的Promise
      */
@@ -467,8 +525,9 @@ public class Promise<T> {
 
     /**
      * 利用所有Promise的值生成一个集合值类型的Promise
+     *
      * @param promises 源Promises
-     * @param <T> 值类型
+     * @param <T>      值类型
      * @return 生成的Promise
      */
     public static <T> Promise<Iterable<T>> all(final Iterable<Promise<T>> promises) {
@@ -516,14 +575,15 @@ public class Promise<T> {
         });
     }
 
-    public static <T> Promise<Iterable<T>> all(Promise<T> ...promises) {
+    public static <T> Promise<Iterable<T>> all(Promise<T>... promises) {
         return all(Arrays.asList(promises));
     }
 
     /**
      * 以最快结束的Promise fulfill一个Promise
+     *
      * @param promises 源Promises
-     * @param <T> 值类型
+     * @param <T>      值类型
      * @return 生成的Promise
      */
     public static <T> Promise<T> race(final Iterable<Promise<T>> promises) {
@@ -547,7 +607,7 @@ public class Promise<T> {
         });
     }
 
-    public static <T> Promise<T> race(Promise<T> ...promises) {
+    public static <T> Promise<T> race(Promise<T>... promises) {
         return race(Arrays.asList(promises));
     }
 }
