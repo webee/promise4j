@@ -39,30 +39,44 @@ public class SingletonWorker {
         }
     }
 
-    public synchronized void start() {
+    private synchronized boolean tryRun() {
         if (init.get()) {
             if (status.compareAndSet(INIT, RUNNING)) {
-                PromiseExecutors.defaultExcutor().execute(new Runnable() {
-                    @Override
-                    public void run() {
-                        do {
-                            try {
-                                work.run().await();
-                            } catch (Throwable throwable) {
-                                throwable.printStackTrace();
-                            }
-                        } while (status.compareAndSet(RUNNING_WITH_PENDING, RUNNING));
-                        if (!status.compareAndSet(RUNNING, INIT)) {
-                            status.set(INIT);
-                            start();
-                        }
-                    }
-                });
-            } else {
-                status.compareAndSet(RUNNING, RUNNING_WITH_PENDING);
+                return true;
             }
+            status.compareAndSet(RUNNING, RUNNING_WITH_PENDING);
         } else {
             pending.set(true);
+        }
+        return false;
+    }
+
+    private synchronized boolean shouldRun() {
+        return status.compareAndSet(RUNNING_WITH_PENDING, RUNNING);
+    }
+
+    private synchronized void toStop() {
+        if (!status.compareAndSet(RUNNING, INIT)) {
+            status.set(INIT);
+            start();
+        }
+    }
+
+    public synchronized void start() {
+        if (tryRun()) {
+            PromiseExecutors.defaultExcutor().execute(new Runnable() {
+                @Override
+                public void run() {
+                    do {
+                        try {
+                            work.run().await();
+                        } catch (Throwable throwable) {
+                            throwable.printStackTrace();
+                        }
+                    } while (shouldRun());
+                    toStop();
+                }
+            });
         }
     }
 
