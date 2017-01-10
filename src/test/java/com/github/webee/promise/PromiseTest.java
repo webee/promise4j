@@ -2,6 +2,7 @@ package com.github.webee.promise;
 
 import com.github.webee.promise.functions.Action;
 import com.github.webee.promise.functions.Fulfillment;
+import com.github.webee.promise.functions.ThenFulfillment;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -345,5 +346,107 @@ public class PromiseTest {
         });
 
         System.out.println(p.await());
+    }
+
+    @Test
+    public void testStatus() throws Throwable {
+        final Promise<String> p0 = new Promise<>("init", new Fulfillment<String>() {
+            @Override
+            public void run(final Transition<String> transition) {
+                System.out.println("p0 inner promise");
+                Executors.newSingleThreadExecutor().execute(new Runnable() {
+                    @Override
+                    public void run() {
+                        try {
+                            Thread.sleep(1000);
+                            transition.update("A");
+                            Thread.sleep(1000);
+                            transition.update("B");
+                            Thread.sleep(1000);
+                            transition.update("C");
+                            Thread.sleep(1000);
+                            transition.update("D");
+                            Thread.sleep(1000);
+                            transition.update("E");
+                        } catch (InterruptedException e) {
+                            e.printStackTrace();
+                        }
+                        transition.fulfill("webee.yw");
+                    }
+                });
+            }
+        });
+        Promise<String> p1 = new Promise<Integer>(new Fulfillment<Integer>() {
+            @Override
+            public void run(final Transition<Integer> transition) {
+                Executors.newSingleThreadExecutor().execute(new Runnable() {
+                    @Override
+                    public void run() {
+                        try {
+                            Thread.sleep(1900);
+                        } catch (InterruptedException e) {
+                            e.printStackTrace();
+                        }
+                        transition.fulfill(123);
+                    }
+                });
+            }
+        }).then(new PromiseTransform<Integer, String>() {
+            @Override
+            public Promise<String> run(Integer v) throws Throwable {
+                System.out.println(String.format("xxx: %d", v));
+                return Promise.resolve(Promise.resolve(p0));
+            }
+        });
+
+        p0.status(new Action<String>() {
+            @Override
+            public void run(String v) {
+                System.out.println(String.format("p0: %s", v));
+            }
+        });
+
+        p1.status(new Action<String>() {
+            @Override
+            public void run(String v) {
+                System.out.println(String.format("p1: %s", v));
+            }
+        });
+
+        System.out.println(p1.await());
+    }
+
+    @Test
+    public void testThenTransform() throws Throwable {
+        Promise<Integer> p0 = Promise.resolve(0);
+        Promise<Integer> p1 = p0.then(0, new ThenFulfillment<Integer, Integer>() {
+            @Override
+            public void run(Integer val, Transition<Integer> transition) {
+                try {
+                    Thread.sleep(1000);
+                    transition.update(++val);
+                    Thread.sleep(1000);
+                    transition.update(++val);
+                    Thread.sleep(1000);
+                    transition.update(++val);
+                    Thread.sleep(1000);
+                    transition.update(++val);
+                    Thread.sleep(1000);
+                    transition.update(++val);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+                transition.fulfill(val);
+            }
+        });
+
+        p1.status(new Action<Integer>() {
+            @Override
+            public void run(Integer v) {
+                System.out.println(String.format("p1: %d", v));
+            }
+        });
+
+        System.out.println(p1.await());
     }
 }

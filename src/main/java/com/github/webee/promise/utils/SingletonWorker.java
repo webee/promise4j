@@ -64,7 +64,7 @@ public class SingletonWorker {
 
     public synchronized void start() {
         if (tryRun()) {
-            PromiseExecutors.defaultExcutor().execute(new Runnable() {
+            PromiseExecutors.defaultExecutor().execute(new Runnable() {
                 @Override
                 public void run() {
                     do {

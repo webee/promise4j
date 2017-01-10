@@ -2,14 +2,12 @@ package com.github.webee.promise;
 
 import com.github.webee.promise.functions.Action;
 import com.github.webee.promise.functions.Fulfillment;
+import com.github.webee.promise.functions.ThenFulfillment;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.Executor;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 
 /**
  * Created by webee on 16/11/17.
@@ -20,15 +18,34 @@ public class Promise<T> {
         PENDING, FULFILLED, REJECTED
     }
 
-    private Executor executor;
-    private Executor transformExecutor;
-    private ConcurrentLinkedQueue<ExecutableRunnable> handlers = new ConcurrentLinkedQueue<>();
-    private ConcurrentLinkedQueue<ExecutableRunnable> listeners = new ConcurrentLinkedQueue<>();
+    static class NullStatus {
+        static NullStatus instance = new NullStatus();
+        private NullStatus() {
+        }
+
+        @Override
+        public String toString() {
+            return "NullStatus{}";
+        }
+    }
+
+    // promise state.
     private State state = State.PENDING;
     private boolean isWaiting = false;
+
+    // promise data.
     private T value;
-    private Object status;
+    private Object status = NullStatus.instance;
     private Throwable reason;
+
+    // current handler/listener executor.
+    private Executor executor;
+    // current transformer executor.
+    private Executor transformExecutor;
+    // settled handler callbacks.
+    private ConcurrentLinkedQueue<ExecutableRunnable> handlers = new ConcurrentLinkedQueue<>();
+    // status listener callbacks.
+    private ConcurrentLinkedQueue<ExecutableRunnable> listeners = new ConcurrentLinkedQueue<>();
 
     /**
      * 通过实现构造一个Promise
@@ -63,7 +80,7 @@ public class Promise<T> {
     }
 
     public Promise(Fulfillment<T> fulfill) {
-        this(null, fulfill);
+        this(NullStatus.instance, fulfill);
     }
 
     private void settled() {
@@ -81,21 +98,31 @@ public class Promise<T> {
         }
     }
 
-    private synchronized void listen(Runnable listener, Executor executor) {
-        executor = executor != null ? executor : PromiseExecutors.defaultExcutor();
+    private synchronized <V> void listen(final Action<V> action, Executor executor) {
+        executor = executor != null ? executor : PromiseExecutors.defaultExecutor();
 
-        executor.execute(listener);
+        Runnable listener = new Runnable() {
+            @Override
+            public void run() {
+                action.run((V) status);
+            }
+        };
+
+        if (status != NullStatus.instance) {
+            executor.execute(listener);
+        }
+
         if (state == State.PENDING) {
             listeners.add(new ExecutableRunnable(listener, executor));
         }
     }
 
-    private synchronized void listen(Runnable listener) {
-        listen(listener, PromiseExecutors.defaultExcutor());
+    private synchronized <V> void listen(Action<V> action) {
+        listen(action, PromiseExecutors.defaultExecutor());
     }
 
     private synchronized void handle(Handler handler, Executor executor) {
-        executor = executor != null ? executor : PromiseExecutors.defaultExcutor();
+        executor = executor != null ? executor : PromiseExecutors.defaultExecutor();
 
         if (state == State.PENDING) {
             handlers.add(new ExecutableRunnable(handler, executor));
@@ -126,8 +153,10 @@ public class Promise<T> {
 
     private synchronized void update(Object s) {
         if (state == State.PENDING) {
-            status = s;
-            updated();
+            if (s != status) {
+                status = s;
+                updated();
+            }
         }
     }
 
@@ -157,7 +186,12 @@ public class Promise<T> {
             // 进入等待状态, 防止其它的fulfill或者_reject
             isWaiting = true;
             try {
-                p.fulfilled(new Action<T>() {
+                p.status(PromiseExecutors.syncExecutor(), new Action<Object>() {
+                    @Override
+                    public void run(Object o) {
+                        hp.update(o);
+                    }
+                }).fulfilled(new Action<T>() {
                     public void run(T v) {
                         hp.waiting_fulfill(v);
                     }
@@ -245,11 +279,7 @@ public class Promise<T> {
      * @return 当前Promise
      */
     public <V> Promise<T> status(Executor executor, final Action<V> onUpdate) {
-        listen(new Runnable() {
-            public void run() {
-                onUpdate.run((V) status);
-            }
-        }, executor);
+        listen(onUpdate, executor);
         return this;
     }
 
@@ -321,6 +351,14 @@ public class Promise<T> {
         return settled(executor, onSettled);
     }
 
+
+    private static <T> void doFulfill(Transition<T> transition, T v) {
+        if (v instanceof Promise) {
+            transition.fulfill((Promise<T>) v);
+        } else {
+            transition.fulfill(v);
+        }
+    }
     /**
      * 指定转换执行器
      *
@@ -378,21 +416,21 @@ public class Promise<T> {
     /**
      * 进入下一个计算流程
      *
-     * @param executor  执行器
-     * @param transform 变换回调
-     * @param <V>       变换目标类型
+     * @param executor        执行器
+     * @param s               初始状态
+     * @param thenFulfillment 下一步的实现
+     * @param <V>             变换目标类型
      * @return 变换后Promise
      */
-    public <V> Promise<V> then(final Executor executor, final Transform<T, V> transform) {
-        return new Promise<>(new Fulfillment<V>() {
+    public <V> Promise<V> then(final Executor executor, Object s, final ThenFulfillment<T, V>thenFulfillment) {
+        return new Promise<>(s, new Fulfillment<V>() {
             @Override
             public void run(final Transition<V> transition) {
                 handle(new Handler() {
                     @Override
                     public void onFulfilled(T v) {
                         try {
-                            V r = transform.run(v);
-                            doFulfill(transition, r);
+                            thenFulfillment.run(v, transition);
                         } catch (Throwable e) {
                             transition.reject(e);
                         }
@@ -403,6 +441,39 @@ public class Promise<T> {
                         transition.reject(r);
                     }
                 }, executor);
+            }
+        });
+    }
+
+    public <V> Promise<V> then(Object s, final ThenFulfillment<T, V>thenFulfillment) {
+        return then(transformExecutor, s, thenFulfillment);
+    }
+
+    public <V> Promise<V> then(final Executor executor, final ThenFulfillment<T, V>thenFulfillment) {
+        return then(executor, NullStatus.instance, thenFulfillment);
+    }
+
+    public <V> Promise<V> then(final ThenFulfillment<T, V>thenFulfillment) {
+        return then(NullStatus.instance, thenFulfillment);
+    }
+
+    /**
+     * 进入下一个计算流程
+     *
+     * @param executor  执行器
+     * @param transform 变换回调
+     * @param <V>       变换目标类型
+     * @return 变换后Promise
+     */
+    public <V> Promise<V> then(final Executor executor, final Transform<T, V> transform) {
+        return then(executor, new ThenFulfillment<T, V>() {
+            @Override
+            public void run(T v, Transition<V> transition) {
+                try {
+                    doFulfill(transition, transform.run(v));
+                } catch (Throwable e) {
+                    transition.reject(e);
+                }
             }
         });
     }
@@ -419,7 +490,7 @@ public class Promise<T> {
      * @param <V>       变换目标值类型
      * @return 变换后Promise
      */
-    public <V> Promise<V> then(Executor executor, PromiseTransform<T, V> transform) {
+    public <V> Promise<V> then(Executor executor, final PromiseTransform<T, V> transform) {
         return then(executor, (Transform<T, V>) transform);
     }
 
@@ -498,14 +569,6 @@ public class Promise<T> {
         }
     }
 
-    private static <T> void doFulfill(Transition<T> transition, T v) {
-        if (v instanceof Promise) {
-            transition.fulfill((Promise<T>) v);
-        } else {
-            transition.fulfill(v);
-        }
-    }
-
     /**
      * 生成一个fulfilled值为v的Promise
      *
@@ -560,7 +623,7 @@ public class Promise<T> {
         return new Promise<>(new Fulfillment<Iterable<T>>() {
             @Override
             public void run(final Transition<Iterable<T>> transition) {
-                PromiseExecutors.defaultExcutor().execute(new Runnable() {
+                PromiseExecutors.defaultExecutor().execute(new Runnable() {
                     @Override
                     public void run() {
                         int count = 0;

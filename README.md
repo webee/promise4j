@@ -14,6 +14,6 @@ To install the library add:
         maven { url "https://jitpack.io" }
    }
    dependencies {
-         compile 'com.github.webee:promise4j:v2.0.1'
+         compile 'com.github.webee:promise4j:v2.1.0'
    }
    ```

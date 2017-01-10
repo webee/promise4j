@@ -12,6 +12,7 @@ public class PromiseExecutors {
     private static final AtomicReference<PromiseExecutors> INSTANCE = new AtomicReference<>();
 
     private final Executor defaultExecutor;
+    private final Executor syncExecutor;
 
     private static PromiseExecutors getInstance() {
         for (;;) {
@@ -28,9 +29,19 @@ public class PromiseExecutors {
 
     private PromiseExecutors() {
         defaultExecutor = Executors.newCachedThreadPool();
+        syncExecutor = new Executor() {
+            @Override
+            public void execute(Runnable command) {
+                command.run();
+            }
+        };
     }
 
-    public static Executor defaultExcutor() {
+    public static Executor defaultExecutor() {
         return getInstance().defaultExecutor;
+    }
+
+    public static Executor syncExecutor() {
+        return getInstance().syncExecutor;
     }
 }
