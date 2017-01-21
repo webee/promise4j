@@ -258,7 +258,7 @@ public class PromiseTest {
                     });
         try {
             p1.await(1, TimeUnit.SECONDS);
-        } catch (AwaitTimeout e) {
+        } catch (AwaitTimeoutException e) {
             boolean c = p1.cancel();
             System.out.println("canceled: " + c);
         } catch (PromiseCanceledException e) {
@@ -417,7 +417,7 @@ public class PromiseTest {
     }
 
     @Test
-    public void testThenTransform() throws Throwable {
+    public void testThenFulfill() throws Throwable {
         Promise<Integer> p0 = Promise.resolve(0);
         Promise<Integer> p1 = p0.then(0, new ThenFulfillment<Integer, Integer>() {
             @Override
@@ -448,5 +448,66 @@ public class PromiseTest {
         });
 
         System.out.println(p1.await());
+    }
+
+    @Test
+    public void testCreate() throws Throwable {
+        Promise p = Promise.create(
+                Transforms.delay(1, TimeUnit.SECONDS),
+                new Runnable() {
+                    @Override
+                    public void run() {
+                        System.out.println("1");
+                    }
+                },
+                Transforms.delay(1, TimeUnit.SECONDS),
+                new Runnable() {
+                    @Override
+                    public void run() {
+                        System.out.println("2");
+                    }
+                }
+        );
+        p.await();
+    }
+
+    @Test
+    public void testTimeout() {
+        final Promise to = Promise.create(Transforms.delay(3, TimeUnit.SECONDS));
+        to.fulfilled(new Runnable() {
+            @Override
+            public void run() {
+                System.out.println("done");
+            }
+        }).rejected(new Action<Throwable>() {
+            @Override
+            public void run(Throwable throwable) {
+                if (throwable instanceof AwaitTimeoutException) {
+                    System.out.println("await timeout");
+                } else if (throwable instanceof PromiseCanceledException) {
+                    System.out.println("canceled");
+                } else {
+                    System.out.println("error");
+                }
+            }
+        });
+
+        Promise.create(Transforms.delay(2, TimeUnit.SECONDS))
+                .settled(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (to.cancel()) {
+                            System.out.println("cancel ok");
+                        } else {
+                            System.out.println("cancel failed");
+                        }
+                    }
+                });
+
+        try {
+            to.await();
+        } catch (Throwable throwable) {
+            throwable.printStackTrace();
+        }
     }
 }

@@ -228,10 +228,10 @@ public class Promise<T> {
                     latch.await();
                 }
             } catch (InterruptedException e) {
-                throw new AwaitTimeout(e);
+                throw new AwaitTimeoutException(e);
             }
             if (!done) {
-                throw new AwaitTimeout(null);
+                throw new AwaitTimeoutException(null);
             }
         }
         if (state == State.FULFILLED) {
@@ -306,6 +306,27 @@ public class Promise<T> {
 
     public Promise<T> fulfilled(Action<T> onFulfilled) {
         return fulfilled(executor, onFulfilled);
+    }
+
+    /**
+     * 处理计算成功
+     *
+     * @param executor    执行器
+     * @param action      成功回调, 不依赖值
+     * @return 当前Promise
+     */
+    public Promise<T> fulfilled(Executor executor, final Runnable action) {
+        handle(new Handler() {
+            @Override
+            public void onFulfilled(T _) {
+                action.run();
+            }
+        }, executor);
+        return this;
+    }
+
+    public Promise<T> fulfilled(Runnable action) {
+        return fulfilled(executor, action);
     }
 
 
@@ -414,16 +435,41 @@ public class Promise<T> {
     }
 
     /**
+     * 开始下一个计算流程
+     *
+     * @param executor        执行器
+     * @param s               初始状态
+     * @param fulfillment     下一步的实现, 不依赖上一步
+     * @param <V>             变换目标类型
+     * @return 变换后Promise
+     */
+    public <V> Promise<V> then(final Executor executor, Object s, final Fulfillment<V>fulfillment) {
+        return new Promise<>(s, fulfillment);
+    }
+
+    public <V> Promise<V> then(Object s, final Fulfillment<V>fulfillment) {
+        return then(transformExecutor, s, fulfillment);
+    }
+
+    public <V> Promise<V> then(final Executor executor, final Fulfillment<V>fulfillment) {
+        return then(executor, NullStatus.instance, fulfillment);
+    }
+
+    public <V> Promise<V> then(final Fulfillment<V>fulfillment) {
+        return then(NullStatus.instance, fulfillment);
+    }
+
+    /**
      * 进入下一个计算流程
      *
      * @param executor        执行器
      * @param s               初始状态
-     * @param thenFulfillment 下一步的实现
+     * @param thenFulfillment 下一步的实现, 依赖上一步
      * @param <V>             变换目标类型
      * @return 变换后Promise
      */
     public <V> Promise<V> then(final Executor executor, Object s, final ThenFulfillment<T, V>thenFulfillment) {
-        return new Promise<>(s, new Fulfillment<V>() {
+        return then(executor, s, new Fulfillment<V>() {
             @Override
             public void run(final Transition<V> transition) {
                 handle(new Handler() {
@@ -570,6 +616,18 @@ public class Promise<T> {
     }
 
     /**
+     * 生成一个顺序执行一系列动作的空Promise作为后续处理的起点
+     * @return
+     */
+    public static Promise<Void> create(Runnable ...actions) {
+        Promise p = resolve((Void)null);
+        for (Runnable action : actions) {
+            p = p.then(action);
+        }
+        return p;
+    }
+
+    /**
      * 生成一个fulfilled值为v的Promise
      *
      * @param v   值
@@ -627,7 +685,7 @@ public class Promise<T> {
                     @Override
                     public void run() {
                         int count = 0;
-                        for (Promise<T> p : promises) {
+                        for (Promise<T> _ : promises) {
                             count++;
                         }
 
