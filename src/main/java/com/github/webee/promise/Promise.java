@@ -673,11 +673,13 @@ public class Promise<T> {
     /**
      * 利用所有Promise的值生成一个集合值类型的Promise
      *
-     * @param promises 源Promises
-     * @param <T>      值类型
+     * @param promises      源Promises
+     * @param allowReject   是否允许reject
+     * @param rejectedValue 如果允许reject则reject之后fulfill的值
+     * @param <T>           值类型
      * @return 生成的Promise
      */
-    public static <T> Promise<Iterable<T>> all(final Iterable<Promise<T>> promises) {
+    public static <T> Promise<Iterable<T>> all(final Iterable<Promise<T>> promises, final boolean allowReject, final T rejectedValue) {
         return new Promise<>(new Fulfillment<Iterable<T>>() {
             @Override
             public void run(final Transition<Iterable<T>> transition) {
@@ -704,7 +706,11 @@ public class Promise<T> {
                             }).rejected(new Action<Throwable>() {
                                 @Override
                                 public void run(Throwable r) {
-                                    transition.reject(r);
+                                    if (allowReject) {
+                                        res.set(index, rejectedValue);
+                                    } else {
+                                        transition.reject(r);
+                                    }
                                     latch.countDown();
                                 }
                             });
@@ -722,8 +728,20 @@ public class Promise<T> {
         });
     }
 
+    public static <T> Promise<Iterable<T>> all(final Iterable<Promise<T>> promises) {
+        return all(promises, false, null);
+    }
+
     public static <T> Promise<Iterable<T>> all(Promise<T>... promises) {
         return all(Arrays.asList(promises));
+    }
+
+    public static <T> Promise<Iterable<T>> all(T rejectedValue, final Iterable<Promise<T>> promises) {
+        return all(promises, true, rejectedValue);
+    }
+
+    public static <T> Promise<Iterable<T>> all(T rejectedValue, Promise<T>... promises) {
+        return all(rejectedValue, Arrays.asList(promises));
     }
 
     /**
