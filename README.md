@@ -1,6 +1,6 @@
 # promise4j
 
-[![Release](https://img.shields.io/github/release/webee/promise4j.svg?label=maven version)](https://jitpack.io/#webee/promise4j)
+[![Release](https://img.shields.io/github/release/webee/promise4j.svg?label=maven%20version)](https://jitpack.io/#webee/promise4j)
 
 Promise for java.
 
@@ -14,6 +14,6 @@ To install the library add:
         maven { url "https://jitpack.io" }
    }
    dependencies {
-         compile 'com.github.webee:promise4j:v2.4.0'
+         compile 'com.github.webee:promise4j:v2.4.1'
    }
    ```
